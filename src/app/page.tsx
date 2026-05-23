@@ -14,7 +14,7 @@ export default function Home() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [jumpDate, setJumpDate] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-
+  const [fitToScreen, setFitToScreen] = useState(true);
   // Country filter states
   const ALL_COUNTRIES = [
     { id: "US", name: "🇺🇸 미국" },
@@ -63,8 +63,10 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center p-4 sm:p-8 font-sans">
-      <div className="w-full max-w-[1800px] flex flex-col gap-6 h-[90vh]">
+    <div className={`bg-slate-50 text-slate-800 p-4 md:p-8 font-sans flex flex-col items-center ${
+      fitToScreen ? "h-screen overflow-hidden" : "min-h-screen"
+    }`}>
+      <div className={`w-full max-w-[1800px] flex flex-col gap-6 ${fitToScreen ? "h-full" : ""}`}>
         
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -99,7 +101,7 @@ export default function Home() {
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm disabled:opacity-70"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
-              최신화
+              {isRefreshing ? '동기화 중...' : '최신화'}
             </button>
           </div>
         </div>
@@ -180,6 +182,15 @@ export default function Home() {
                 </div>
               )}
             </div>
+
+            {/* Layout Toggle Button */}
+            <button 
+              onClick={() => setFitToScreen(!fitToScreen)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors border bg-white text-slate-600 border-slate-200 hover:bg-slate-50 shadow-sm"
+              title="캘린더 크기를 모니터 화면에 맞추거나 스크롤 모드로 전환합니다"
+            >
+              {fitToScreen ? "↕️ 스크롤 뷰" : "🗖 화면 꽉 채우기"}
+            </button>
           </div>
 
           {/* Legend */}
@@ -192,7 +203,11 @@ export default function Home() {
         </div>
 
         {/* Calendar Section */}
-        <div className="flex-1 min-h-0 bg-white border border-slate-200 rounded-xl shadow-sm p-4 relative z-0">
+        <div className={`bg-white border border-slate-200 rounded-xl shadow-sm p-4 relative z-0 mt-4 flex flex-col ${
+          fitToScreen 
+            ? "flex-1 min-h-0" 
+            : "w-full h-[75vh] min-h-[650px]"
+        }`}>
           <MarketCalendar 
             timezone={timezone} 
             selectedCountries={selectedCountries} 

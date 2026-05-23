@@ -6,6 +6,7 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import momentTimezonePlugin from "@fullcalendar/moment-timezone";
 import resourceTimeGridPlugin from "@fullcalendar/resource-timegrid";
+import { formatInTimeZone } from "date-fns-tz";
 import { generateEvents } from "../lib/eventGenerator";
 import { Holiday } from "../lib/mockData";
 import { format, isWeekend } from "date-fns";
@@ -22,7 +23,11 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
   const calendarRef = useRef<FullCalendar>(null);
   const [events, setEvents] = useState<any[]>([]);
   
-  const [modalDate, setModalDate] = useState<string | null>(null);
+  // 커스텀 툴팁 상태
+  const [tooltip, setTooltip] = useState<{ x: number, y: number, title: string, time: string } | null>(null);
+  
+  // 공휴일 정보 팝오버 상태
+  const [holidayPopover, setHolidayPopover] = useState<{ date: string, x: number, y: number } | null>(null);
 
   const countryNameMap: Record<string, string> = {
     "US": "미국", "KR": "한국", "JP": "일본", "CN": "중국", "UK": "영국"
@@ -38,6 +43,33 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     const viewType = dateInfo.view.type;
     const generated = generateEvents(dateInfo.start, dateInfo.end, timezone, selectedCountries, holidays, viewType);
     setEvents(generated);
+
+    // FullCalendar 내부 렌더링 후 타이틀 DOM을 조작하여 주차 버튼 주입
+    setTimeout(() => {
+      const titleEl = document.querySelector('.fc-toolbar-title');
+      if (titleEl) {
+        const existingBtn = titleEl.querySelector('.custom-week-btn');
+        if (existingBtn) existingBtn.remove();
+
+        if (viewType === 'resourceTimeGridDay') {
+          const weekNum = format(dateInfo.view.currentStart, "w");
+          
+          titleEl.classList.add('relative'); // 날짜 텍스트를 정중앙에 고정하기 위해 relative 부여
+
+          const btn = document.createElement('span');
+          btn.className = "custom-week-btn absolute top-1/2 -translate-y-1/2 left-[calc(100%+12px)] px-2.5 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-200 text-sm rounded-full font-extrabold cursor-pointer hover:bg-indigo-100 transition-colors shadow-sm whitespace-nowrap";
+          btn.innerText = `W${weekNum}`;
+          btn.title = "이 주차의 주간(Week) 화면으로 이동";
+          btn.onclick = () => {
+            if (calendarRef.current) {
+              calendarRef.current.getApi().changeView('resourceTimeGridWeek', dateInfo.view.currentStart);
+            }
+          };
+          
+          titleEl.appendChild(btn);
+        }
+      }
+    }, 10);
 
     // 2. 타이틀 클릭 시 Month 뷰로 이동하는 편의성 기능 (navLinks 미지원 영역)
     setTimeout(() => {
@@ -73,7 +105,9 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
   useEffect(() => {
     if (jumpDate && calendarRef.current) {
       const api = calendarRef.current.getApi();
-      api.gotoDate(jumpDate);
+      setTimeout(() => {
+        api.gotoDate(jumpDate);
+      }, 0);
     }
   }, [jumpDate]);
 
@@ -87,7 +121,10 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     
     // 날짜 텍스트 클릭 시 데이 뷰로 강제 이동
     if (calendarRef.current) {
-      calendarRef.current.getApi().changeView('resourceTimeGridDay', date);
+      const api = calendarRef.current.getApi();
+      setTimeout(() => {
+        api.changeView('resourceTimeGridDay', date);
+      }, 0);
     }
   };
 
@@ -125,7 +162,7 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
               e.preventDefault();
               e.stopPropagation();
               if (!isWknd) {
-                setModalDate(dateStr);
+                setHolidayPopover({ date: dateStr, x: e.clientX, y: e.clientY });
               }
             }}
             className={`holiday-badge-btn mt-1 text-[10px] font-semibold px-2 py-0.5 rounded transition-colors no-underline hover:no-underline ${
@@ -169,7 +206,7 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
               }`}
               onClick={(e) => {
                 e.stopPropagation();
-                if (!isWknd) setModalDate(dateStr);
+                if (!isWknd) setHolidayPopover({ date: dateStr, x: e.clientX, y: e.clientY });
               }}
               title="휴장일 상세 보기"
             >
@@ -201,8 +238,9 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
         <div className="flex flex-col items-center justify-center py-1">
           <span className="font-bold text-slate-700">{countryName}</span>
           <div 
-            onClick={() => {
-               if (!isWknd) setModalDate(dateStr);
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!isWknd) setHolidayPopover({ date: dateStr, x: e.clientX, y: e.clientY });
             }}
             className={`mt-1 text-[10px] px-2 py-0.5 rounded font-semibold transition-colors ${
             isClosed 
@@ -229,11 +267,8 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     // 월간 뷰 전용 심플 렌더링
     if (isMonthView) {
       return (
-        <div 
-          className="w-full text-left px-1 py-0.5 truncate cursor-pointer bg-[#0ea5e9]/90 hover:bg-[#0ea5e9] transition-colors rounded"
-          title={`${countryName} - 거래가능`}
-        >
-          <span className="text-[10px] font-semibold text-white tracking-wide">{countryName} 거래가능</span>
+        <div className="w-full text-center py-0.5 text-[10px] font-bold text-white shadow-sm overflow-hidden whitespace-nowrap px-1 rounded-sm bg-[#0ea5e9]/90 hover:bg-[#0ea5e9] transition-colors">
+          {countryName} 거래가능
         </div>
       );
     }
@@ -247,38 +282,58 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     else if (shortType === "정규장 (오전)") shortType = "오전장";
     else if (shortType === "정규장 (오후)") shortType = "오후장";
     else if (shortType === "휴장 (점심)") shortType = "점심";
-    else if (shortType === "정규장") shortType = "정규장";
+    else if (shortType === "정규장") shortType = "정규";
     else if (shortType === "애프터마켓") shortType = "애프터";
     else if (shortType === "프리마켓") shortType = "프리";
     else if (shortType === "데이마켓") shortType = "데이";
 
-    const timeText = arg.timeText;
-    const hoverText = `[${countryName}] ${type}\n운영 시간: ${timeText}`;
+    const isDayView = arg.view.type === 'resourceTimeGridDay';
 
     return (
-      <div 
-        className="w-full h-full flex flex-col items-center justify-start overflow-hidden px-0.5 pt-0.5 cursor-help"
-        title={hoverText}
-      >
+      <div className="w-full h-full flex flex-col items-center justify-start overflow-hidden px-0.5 pt-0.5">
         <div className="font-extrabold text-[0.7rem] leading-tight text-white/95 whitespace-nowrap overflow-hidden text-ellipsis w-full text-center">
           {countryName}
         </div>
-        <div className="font-medium text-[0.65rem] leading-tight text-white/90 whitespace-nowrap overflow-hidden text-ellipsis w-full text-center">
+        <div className="text-[0.6rem] font-medium opacity-90 leading-tight whitespace-nowrap overflow-hidden text-ellipsis w-full text-center mt-0.5 tracking-tight">
           {shortType}
         </div>
+        {isDayView && (
+          <div className="text-[0.55rem] font-mono text-emerald-100 mt-1 tracking-tighter leading-none whitespace-nowrap bg-black/20 px-1 py-0.5 rounded-sm">
+            {formatInTimeZone(arg.event.start, timezone, 'HH:mm')} - {formatInTimeZone(arg.event.end, timezone, 'HH:mm')}
+          </div>
+        )}
       </div>
     );
   };
 
-  let modalContent = null;
-  if (modalDate) {
-    const isWknd = isWeekend(new Date(modalDate));
-    const dailySessions = getSessionsForDate(new Date(modalDate));
+  const handleEventMouseEnter = (arg: any) => {
+    const { countryName, type, isMonthView } = arg.event.extendedProps;
+    if (isMonthView || arg.view.type === 'resourceTimeGridDay') return;
+
+    const el = arg.el as HTMLElement;
+    const rect = el.getBoundingClientRect();
+
+    setTooltip({
+      x: rect.left + rect.width / 2,
+      y: rect.top,
+      title: `${countryName} ${type}`,
+      time: `${formatInTimeZone(arg.event.start, timezone, 'HH:mm')} - ${formatInTimeZone(arg.event.end, timezone, 'HH:mm')}`
+    });
+  };
+
+  const handleEventMouseLeave = () => {
+    setTooltip(null);
+  };
+
+  let popoverContent = null;
+  if (holidayPopover) {
+    const isWknd = isWeekend(new Date(holidayPopover.date));
+    const dailySessions = getSessionsForDate(new Date(holidayPopover.date));
     
-    modalContent = selectedCountries.map(country => {
+    const contentList = selectedCountries.map(country => {
       const countrySession = dailySessions.find(s => s.country === country);
       const countryName = countrySession?.countryName || country;
-      const holiday = holidays.find(h => h.date === modalDate && h.country === country);
+      const holiday = holidays.find(h => h.date === holidayPopover.date && h.country === country);
       
       let status = "개장";
       let reason = "";
@@ -305,6 +360,27 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
         </div>
       );
     });
+
+    const safeLeft = Math.min(holidayPopover.x, typeof window !== 'undefined' ? window.innerWidth - 300 : 1000);
+    const safeTop = Math.min(holidayPopover.y + 15, typeof window !== 'undefined' ? window.innerHeight - 350 : 800);
+
+    popoverContent = (
+      <>
+        <div className="fixed inset-0 z-[9998]" onClick={() => setHolidayPopover(null)}></div>
+        <div 
+          className="fixed z-[9999] bg-white rounded-xl shadow-2xl border border-slate-200 w-72 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+          style={{ left: safeLeft, top: safeTop }}
+        >
+          <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center">
+            <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">📅 {holidayPopover.date}</h3>
+            <button onClick={() => setHolidayPopover(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+          </div>
+          <div className="p-4 flex flex-col max-h-[60vh] overflow-y-auto">
+            {contentList}
+          </div>
+        </div>
+      </>
+    );
   }
 
   return (
@@ -360,25 +436,24 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
         dayCellContent={renderDayCellContent}
         resourceLabelContent={renderResourceLabelContent}
         eventContent={renderEventContent}
+        eventMouseEnter={handleEventMouseEnter}
+        eventMouseLeave={handleEventMouseLeave}
         navLinks={true}
         navLinkDayClick={handleNavLinkDayClick}
         navLinkWeekClick="resourceTimeGridWeek"
         weekNumbers={true}
       />
 
-      {modalDate && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="bg-slate-50 px-4 py-3 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800">{modalDate} 장 상태 요약</h3>
-              <button onClick={() => setModalDate(null)} className="text-slate-400 hover:text-slate-600">
-                ✕
-              </button>
-            </div>
-            <div className="p-4 flex flex-col">
-              {modalContent}
-            </div>
-          </div>
+      {popoverContent}
+
+      {tooltip && (
+        <div 
+          className="fixed z-[9999] pointer-events-none bg-slate-800/95 backdrop-blur-sm text-white px-2 py-1 rounded shadow-md text-[10px] flex flex-col gap-0.5 transform -translate-x-1/2 -translate-y-full animate-in fade-in duration-75"
+          style={{ left: tooltip.x, top: tooltip.y - 6 }}
+        >
+          <div className="font-bold text-emerald-400 leading-none">{tooltip.title}</div>
+          <div className="text-slate-200 font-mono tracking-tight leading-none">{tooltip.time}</div>
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800/95 rotate-45"></div>
         </div>
       )}
     </div>

@@ -62,3 +62,8 @@ body {
 .fc-theme-standard td, .fc-theme-standard th {
   border-color: #e2e8f0;
 }
+
+/* 데이 뷰(일간 화면) 전용: 스크롤을 방지하기 위해 블록(슬롯) 세로 높이를 대폭 압축 */
+.fc-resourceTimeGridDay-view .fc-timegrid-slot {
+  height: 0.8em !important;
+}
