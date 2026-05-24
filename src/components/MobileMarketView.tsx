@@ -49,6 +49,12 @@ export default function MobileMarketView({
   const [dayViewMode, setDayViewMode] = useState<"card" | "timeline">("card");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [holidayPopover, setHolidayPopover] = useState<string | null>(null); // yyyy-MM-dd or null
+  const [teleportDate, setTeleportDate] = useState<string>("");
+
+  const closeMoreMenu = () => {
+    setShowMoreMenu(false);
+    setTeleportDate("");
+  };
 
   const isTimeline = viewMode === "day" && dayViewMode === "timeline";
 
@@ -392,11 +398,11 @@ export default function MobileMarketView({
     if (!showMoreMenu) return null;
     return (
       <>
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[100] mobile-menu-backdrop" onClick={() => setShowMoreMenu(false)} />
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[100] mobile-menu-backdrop" onClick={closeMoreMenu} />
         <div className="fixed top-0 right-0 h-full w-[280px] bg-white shadow-2xl z-[101] flex flex-col mobile-menu-panel">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/80">
             <h2 className="font-bold text-slate-800 text-base">설정</h2>
-            <button onClick={() => setShowMoreMenu(false)} className="p-2 rounded-lg hover:bg-slate-200 transition-colors">
+            <button onClick={closeMoreMenu} className="p-2 rounded-lg hover:bg-slate-200 transition-colors">
               <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
@@ -426,12 +432,31 @@ export default function MobileMarketView({
             {/* 날짜 텔레포트 */}
             <section>
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">📅 날짜 텔레포트</label>
-              <input type="date" value={format(currentDate, "yyyy-MM-dd")} onChange={e => { if (e.target.value) { setCurrentDate(new Date(e.target.value + "T00:00:00")); setViewMode("day"); setShowMoreMenu(false); } }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-medium text-slate-700 outline-none" />
+              <div className="flex gap-2">
+                <input 
+                  type="date" 
+                  value={teleportDate || format(currentDate, "yyyy-MM-dd")} 
+                  onChange={e => setTeleportDate(e.target.value)}
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-medium text-slate-700 outline-none min-w-0" 
+                />
+                <button 
+                  onClick={() => {
+                    if (teleportDate) {
+                      setCurrentDate(new Date(teleportDate + "T00:00:00"));
+                      setViewMode("day");
+                      closeMoreMenu();
+                    }
+                  }}
+                  disabled={!teleportDate || teleportDate === format(currentDate, "yyyy-MM-dd")}
+                  className="bg-indigo-600 text-white px-4 py-3 rounded-xl font-bold text-sm disabled:opacity-50 disabled:bg-slate-300 transition-colors whitespace-nowrap"
+                >
+                  이동
+                </button>
+              </div>
             </section>
             {/* 최신화 */}
             <section>
-              <button onClick={() => { onRefresh(); setShowMoreMenu(false); }} disabled={isRefreshing}
+              <button onClick={() => { onRefresh(); closeMoreMenu(); }} disabled={isRefreshing}
                 className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-4 py-3 rounded-xl font-semibold text-sm disabled:opacity-60">
                 <svg className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                 {isRefreshing ? "동기화 중..." : "최신화"}
