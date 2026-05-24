@@ -431,7 +431,7 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
         events={events}
         datesSet={handleDatesSet}
         timeZone={timezone}
-        height="100%"
+        height={isMobileTimeline ? "auto" : "100%"}
         slotMinTime="00:00:00"
         slotMaxTime="24:00:00"
         allDaySlot={false}

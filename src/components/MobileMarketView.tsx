@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   format, isWeekend,
   startOfWeek, endOfWeek, eachDayOfInterval,
@@ -49,6 +49,37 @@ export default function MobileMarketView({
   const [dayViewMode, setDayViewMode] = useState<"card" | "timeline">("card");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [holidayPopover, setHolidayPopover] = useState<string | null>(null); // yyyy-MM-dd or null
+
+  const isTimeline = viewMode === "day" && dayViewMode === "timeline";
+
+  // ── 스크롤 감지로 헤더 숨김 처리 ──
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const lastScrollYRef = useRef(0);
+
+  useEffect(() => {
+    if (!isTimeline) {
+      setIsHeaderVisible(true);
+      return;
+    }
+
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      const lastScrollY = lastScrollYRef.current;
+      
+      if (currentScrollY < 50) {
+        setIsHeaderVisible(true);
+      } else if (currentScrollY > lastScrollY && currentScrollY - lastScrollY > 5) {
+        setIsHeaderVisible(false); // 스크롤 내리면 숨김
+      } else if (currentScrollY < lastScrollY && lastScrollY - currentScrollY > 5) {
+        setIsHeaderVisible(true);  // 스크롤 올리면 보임
+      }
+      
+      lastScrollYRef.current = currentScrollY;
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isTimeline]);
 
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
@@ -116,19 +147,7 @@ export default function MobileMarketView({
     const sessions = getSessionsForDate(currentDate);
     const wknd = isWeekend(currentDate);
     return (
-      <div className={`flex flex-col ${dayViewMode === "card" ? "pb-8" : "flex-1 min-h-0"}`}>
-        <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100 bg-white/50 flex-shrink-0">
-          <span className="text-sm font-semibold text-slate-500">
-            {dayViewMode === "card" ? "국가별 정보 (카드)" : "시간대별 표시 (타임라인)"}
-          </span>
-          <button 
-            onClick={() => setDayViewMode(m => m === "card" ? "timeline" : "card")} 
-            className="text-[11px] bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm font-bold active:bg-slate-50 transition-colors text-slate-600"
-          >
-            {dayViewMode === "card" ? "시간별로 보기 📊" : "카드뷰로 보기 📋"}
-          </button>
-        </div>
-
+      <div className={`flex flex-col w-full ${dayViewMode === "card" ? "pb-8" : "pb-[80px]"}`}>
         {dayViewMode === "card" ? (
           <div className="flex flex-col gap-3 px-4 py-3">
             {selectedCountries.map(cid => {
@@ -175,18 +194,16 @@ export default function MobileMarketView({
             })}
           </div>
         ) : (
-          <div className="flex flex-col flex-1 min-h-0">
-            <div className="flex-1 relative w-full px-1 py-1 min-h-0">
-              <MarketCalendar 
-                timezone={timezone}
-                selectedCountries={selectedCountries}
-                holidays={holidays}
-                jumpDate={format(currentDate, "yyyy-MM-dd")}
-                isMobileTimeline={true}
-              />
-            </div>
-            {/* 범례 */}
-            <div className="bg-white border-t border-slate-200 px-3 py-2.5 flex-shrink-0 flex items-center justify-center gap-3 flex-wrap shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-10" style={{ paddingBottom: "calc(0.625rem + env(safe-area-inset-bottom, 0px))" }}>
+          <div className="w-full px-1 py-1">
+            <MarketCalendar 
+              timezone={timezone}
+              selectedCountries={selectedCountries}
+              holidays={holidays}
+              jumpDate={format(currentDate, "yyyy-MM-dd")}
+              isMobileTimeline={true}
+            />
+            {/* 타임라인 전용 하단 고정 범례 */}
+            <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-slate-200 px-3 py-2.5 flex items-center justify-center gap-3 flex-wrap shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-40" style={{ paddingBottom: "calc(0.625rem + env(safe-area-inset-bottom, 0px))" }}>
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />정규장</div>
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600"><span className="w-2.5 h-2.5 rounded-full bg-gray-500" />프리/NXT/데이</div>
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" />애프터</div>
@@ -439,80 +456,102 @@ export default function MobileMarketView({
   // ════════════════════════════════════════════
   //  RENDER
   // ════════════════════════════════════════════
-  const isTimeline = viewMode === "day" && dayViewMode === "timeline";
-
   return (
-    <div className={`flex flex-col bg-slate-50 ${isTimeline ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]"}`}>
-      {/* ── 상단 바 ── */}
-      <div className="sticky top-0 z-40 flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200 shadow-sm flex-shrink-0">
-        <h1 className="text-[15px] font-extrabold text-slate-800 tracking-tight">글로벌 증시 캘린더</h1>
-        <button onClick={() => setShowMoreMenu(true)} className="p-2 -mr-1 rounded-lg active:bg-slate-100" aria-label="설정">
-          <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-          </svg>
-        </button>
-      </div>
-
-      {/* ── 날짜 네비 + 뷰 탭 ── */}
-      <div className="sticky top-[53px] z-30 bg-white border-b border-slate-200 px-4 py-2.5 flex-shrink-0 shadow-sm">
-        {/* 날짜 행: grid로 완벽한 중앙 정렬 */}
-        <div className="grid grid-cols-[40px_1fr_40px] items-center mb-2">
-          <button onClick={goBack} className="p-2 -ml-1 rounded-xl active:bg-slate-100 justify-self-start">
-            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
+    <div className="flex flex-col min-h-[100dvh] bg-slate-50 relative">
+      {/* ── 스크롤 반응형 통합 헤더 ── */}
+      <div 
+        className={`sticky top-0 z-40 w-full flex flex-col shadow-sm transition-transform duration-300 ease-in-out ${
+          isTimeline && !isHeaderVisible ? '-translate-y-full' : 'translate-y-0'
+        }`}
+      >
+        {/* 상단 바 */}
+        <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200">
+          <h1 className="text-[15px] font-extrabold text-slate-800 tracking-tight">글로벌 증시 캘린더</h1>
+          <button 
+            onClick={() => setShowMoreMenu(true)}
+            className="p-2 -mr-1 rounded-lg active:bg-slate-100" aria-label="설정"
+          >
+            <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+            </svg>
           </button>
+        </div>
 
-          <div className="flex justify-center items-center">
-            <div className="relative flex items-center justify-center">
-              {/* 휴장 정보 버튼 (데이 뷰에서만) - 왼쪽 절대 위치 */}
-              {viewMode === "day" && (
-                <div className="absolute right-full mr-2">
-                  <button
-                    onClick={() => setHolidayPopover(format(currentDate, "yyyy-MM-dd"))}
-                    className={`w-6 h-6 rounded-full flex items-center justify-center border transition-colors ${
-                      hasAnyClosed
-                        ? "bg-rose-50 border-rose-200 active:bg-rose-100"
-                        : "bg-emerald-50 border-emerald-200 active:bg-emerald-100"
-                    }`}
-                    aria-label="휴장 정보"
-                  >
-                    <div className={`w-2 h-2 rounded-full ${hasAnyClosed ? "bg-rose-500" : "bg-emerald-500"}`} />
-                  </button>
-                </div>
-              )}
+        {/* 날짜 네비게이션 + 뷰 탭 */}
+        <div className="bg-white border-b border-slate-100 flex-shrink-0 px-4 py-2.5">
+          <div className="grid grid-cols-[40px_1fr_40px] items-center mb-2">
+            <button onClick={goBack} className="p-2 -ml-1 rounded-xl active:bg-slate-100 justify-self-start">
+              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
+            </button>
 
-              {/* 중앙 텍스트 (기준점) */}
-              <span className="font-bold text-slate-800 text-[15px]">{getTitle()}</span>
-
-              {/* 오늘 뱃지 또는 이동 링크 - 오른쪽 절대 위치 */}
-              <div className="absolute left-full ml-2 flex items-center">
-                {isViewingCurrent ? (
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded whitespace-nowrap">
-                    {viewMode === "day" ? "오늘" : viewMode === "week" ? "이번주" : "이번달"}
-                  </span>
-                ) : (
-                  <button onClick={goToday} className="text-[10px] text-indigo-500 font-medium active:text-indigo-700 whitespace-nowrap">
-                    {moveText}
-                  </button>
+            <div className="flex justify-center items-center">
+              <div className="relative flex items-center justify-center">
+                {/* 휴장 정보 버튼 (데이 뷰에서만) - 왼쪽 절대 위치 */}
+                {viewMode === "day" && (
+                  <div className="absolute right-full mr-2">
+                    <button
+                      onClick={() => setHolidayPopover(format(currentDate, "yyyy-MM-dd"))}
+                      className={`w-6 h-6 rounded-full flex items-center justify-center border transition-colors ${
+                        hasAnyClosed
+                          ? "bg-rose-50 border-rose-200 active:bg-rose-100"
+                          : "bg-emerald-50 border-emerald-200 active:bg-emerald-100"
+                      }`}
+                      aria-label="휴장 정보"
+                    >
+                      <div className={`w-2 h-2 rounded-full ${hasAnyClosed ? "bg-rose-500" : "bg-emerald-500"}`} />
+                    </button>
+                  </div>
                 )}
+
+                {/* 중앙 텍스트 (기준점) */}
+                <span className="font-bold text-slate-800 text-[15px]">{getTitle()}</span>
+
+                {/* 오늘 뱃지 또는 이동 링크 - 오른쪽 절대 위치 */}
+                <div className="absolute left-full ml-2 flex items-center">
+                  {isViewingCurrent ? (
+                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded whitespace-nowrap">
+                      {viewMode === "day" ? "오늘" : viewMode === "week" ? "이번주" : "이번달"}
+                    </span>
+                  ) : (
+                    <button onClick={goToday} className="text-[10px] text-indigo-500 font-medium active:text-indigo-700 whitespace-nowrap">
+                      {moveText}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <button onClick={goNext} className="p-2 -mr-1 rounded-xl active:bg-slate-100 justify-self-end">
-            <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
-          </button>
-        </div>
-
-        {/* 뷰 탭 */}
-        <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-          {(["day", "week", "month"] as const).map(m => (
-            <button key={m} onClick={() => setViewMode(m)}
-              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${viewMode === m ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
-            >
-              {m === "day" ? "일간" : m === "week" ? "주간" : "월간"}
+            <button onClick={goNext} className="p-2 -mr-1 rounded-xl active:bg-slate-100 justify-self-end">
+              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
             </button>
-          ))}
+          </div>
+          
+          {/* 뷰 탭 */}
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+            {(["day", "week", "month"] as const).map(m => (
+              <button key={m} onClick={() => setViewMode(m)}
+                className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${viewMode === m ? "bg-white text-slate-800 shadow-sm" : "text-slate-500"}`}
+              >
+                {m === "day" ? "일간" : m === "week" ? "주간" : "월간"}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* 뷰 모드 토글 (데이뷰만) */}
+        {viewMode === "day" && (
+          <div className="flex justify-between items-center px-4 py-2 border-b border-slate-100 bg-white/95 backdrop-blur">
+            <span className="text-sm font-semibold text-slate-500">
+              {dayViewMode === "card" ? "국가별 정보 (카드)" : "시간대별 표시 (타임라인)"}
+            </span>
+            <button 
+              onClick={() => setDayViewMode(m => m === "card" ? "timeline" : "card")} 
+              className="text-[11px] bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-sm font-bold active:bg-slate-50 transition-colors text-slate-600"
+            >
+              {dayViewMode === "card" ? "시간별로 보기 📊" : "카드뷰로 보기 📋"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── 콘텐츠 ── */}
