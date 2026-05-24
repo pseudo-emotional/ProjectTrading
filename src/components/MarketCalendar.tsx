@@ -17,9 +17,10 @@ interface MarketCalendarProps {
   selectedCountries: string[];
   holidays: Holiday[];
   jumpDate?: string | null;
+  isMobileTimeline?: boolean;
 }
 
-export default function MarketCalendar({ timezone, selectedCountries, holidays, jumpDate }: MarketCalendarProps) {
+export default function MarketCalendar({ timezone, selectedCountries, holidays, jumpDate, isMobileTimeline = false }: MarketCalendarProps) {
   const calendarRef = useRef<FullCalendar>(null);
   const [events, setEvents] = useState<any[]>([]);
   
@@ -273,6 +274,11 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
       );
     }
 
+    // 모바일 타임라인 모드: 텍스트 없이 색상 박스만
+    if (isMobileTimeline) {
+      return <div className="w-full h-full" title={`${countryName} ${type}`} />;
+    }
+
     // Shorten type names for narrow columns
     let shortType = type;
     if (shortType === "NXT 메인마켓") shortType = "NXT 메인";
@@ -414,10 +420,10 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
       <FullCalendar
         ref={calendarRef}
         plugins={[timeGridPlugin, dayGridPlugin, momentTimezonePlugin, resourceTimeGridPlugin]}
-        initialView="resourceTimeGridWeek"
+        initialView={isMobileTimeline ? "resourceTimeGridDay" : "resourceTimeGridWeek"}
         resources={resources}
         datesAboveResources={true}
-        headerToolbar={{
+        headerToolbar={isMobileTimeline ? false : {
           left: "prev,next today",
           center: "title",
           right: "resourceTimeGridWeek,resourceTimeGridDay,dayGridMonth"

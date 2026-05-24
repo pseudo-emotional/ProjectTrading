@@ -67,3 +67,66 @@ body {
 .fc-resourceTimeGridDay-view .fc-timegrid-slot {
   height: 0.8em !important;
 }
+
+/* ═══════════════════════════════════════════
+   모바일 전용 스타일
+   ═══════════════════════════════════════════ */
+
+/* 모바일 메뉴 슬라이드 애니메이션 */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.mobile-menu-panel {
+  animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mobile-menu-backdrop {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* 모바일 바텀시트 애니메이션 */
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+.mobile-bottom-sheet {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 모바일 스크롤 최적화 */
+.mobile-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+}
+.mobile-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* 모바일 전역 */
+@media (max-width: 767px) {
+  body {
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+
+  /* iOS Safe Area (노치/홈바) 대응 */
+  .h-\[100dvh\] {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* 터치 피드백 강화 */
+  button:active {
+    transition-duration: 0.05s;
+  }
+
+  /* select 드롭다운 터치 최적화 */
+  select {
+    font-size: 16px; /* iOS 자동 줌인 방지 */
+  }
+}

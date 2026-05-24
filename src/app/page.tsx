@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import MarketCalendar from "@/components/MarketCalendar";
+import MobileMarketView from "@/components/MobileMarketView";
 import DatePickerWheel from "@/components/DatePickerWheel";
 import { RefreshCw, Globe, Filter } from "lucide-react";
 import { Holiday } from "@/lib/mockData";
@@ -15,6 +16,7 @@ export default function Home() {
   const [jumpDate, setJumpDate] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [fitToScreen, setFitToScreen] = useState(true);
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
   // Country filter states
   const ALL_COUNTRIES = [
     { id: "US", name: "🇺🇸 미국" },
@@ -54,6 +56,20 @@ export default function Home() {
     handleRefresh();
   }, []);
 
+  // 모바일 감지 (768px 미만)
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 767px)');
+    setIsMobile(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+
+  // SSR 또는 초기 렌더 시 빈 화면 방지
+  if (isMobile === null) {
+    return <div className="h-screen bg-slate-50" />;
+  }
+
   const toggleCountry = (countryId: string) => {
     setSelectedCountries(prev => 
       prev.includes(countryId) 
@@ -62,7 +78,19 @@ export default function Home() {
     );
   };
 
-  return (
+  return isMobile ? (
+    <MobileMarketView
+      timezone={timezone}
+      setTimezone={setTimezone}
+      selectedCountries={selectedCountries}
+      setSelectedCountries={setSelectedCountries}
+      holidays={holidays}
+      onRefresh={handleRefresh}
+      isRefreshing={isRefreshing}
+      timezones={timezones}
+      allCountries={ALL_COUNTRIES}
+    />
+  ) : (
     <div className={`bg-slate-50 text-slate-800 p-4 md:p-8 font-sans flex flex-col items-center ${
       fitToScreen ? "h-screen overflow-hidden" : "min-h-screen"
     }`}>
@@ -217,5 +245,5 @@ export default function Home() {
         </div>
       </div>
     </div>
-  );
+   );
 }
