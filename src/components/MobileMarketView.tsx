@@ -44,9 +44,40 @@ export default function MobileMarketView({
   holidays, onRefresh, isRefreshing,
   timezones, allCountries,
 }: Props) {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<"day" | "week" | "month">("day");
-  const [dayViewMode, setDayViewMode] = useState<"card" | "timeline">("card");
+  // 세션 스토리지에서 상태 복구
+  const [currentDate, setCurrentDate] = useState<Date>(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("saved_currentDate");
+      if (saved) return new Date(saved);
+    }
+    return new Date();
+  });
+
+  const [viewMode, setViewMode] = useState<"day" | "week" | "month">(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("saved_viewMode");
+      if (saved === "day" || saved === "week" || saved === "month") return saved;
+    }
+    return "day";
+  });
+
+  const [dayViewMode, setDayViewMode] = useState<"card" | "timeline">(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("saved_dayViewMode");
+      if (saved === "card" || saved === "timeline") return saved;
+    }
+    return "card";
+  });
+
+  // 상태 변경 시 세션 스토리지에 저장 (새로고침 시 유지용)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("saved_currentDate", currentDate.toISOString());
+      sessionStorage.setItem("saved_viewMode", viewMode);
+      sessionStorage.setItem("saved_dayViewMode", dayViewMode);
+    }
+  }, [currentDate, viewMode, dayViewMode]);
+
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [holidayPopover, setHolidayPopover] = useState<string | null>(null); // yyyy-MM-dd or null
   const [teleportDate, setTeleportDate] = useState<string>("");
