@@ -181,7 +181,7 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     let closedCount = 0;
     let earlyCount = 0;
     let lateCount = 0;
-    let dstBadge: "start" | "end" | null = null;
+    let dstBadges: { country: string; status: "start" | "end" }[] = [];
     
     const dateStr = format(arg.date, "yyyy-MM-dd");
 
@@ -194,7 +194,7 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
       else openCount++;
       
       if (dailyData.dstStatus) {
-        dstBadge = dailyData.dstStatus;
+        dstBadges.push({ country: countryId, status: dailyData.dstStatus });
       }
     });
 
@@ -226,15 +226,15 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
             {arg.dayNumberText}
           </span>
         </div>
-        {dstBadge && (
-          <div className="w-full flex justify-center mb-0.5">
-            <span className={`text-[9px] font-extrabold px-1.5 py-[2px] rounded-sm shadow-sm ${
-              dstBadge === "start" ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"
+        <div className="flex flex-col items-center gap-0.5 mb-0.5">
+          {dstBadges.map((badge, idx) => (
+            <span key={idx} className={`text-[9px] font-extrabold px-1.5 py-[2px] rounded-sm shadow-sm ${
+              badge.status === "start" ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"
             }`}>
-              {dstBadge === "start" ? "🌞 서머타임 시작" : "🌜 서머타임 종료"}
+              {badge.status === "start" ? `🌞 ${countryNameMap[badge.country]} 서머타임 시작` : `🌜 ${countryNameMap[badge.country]} 서머타임 종료`}
             </span>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
     );
   };
