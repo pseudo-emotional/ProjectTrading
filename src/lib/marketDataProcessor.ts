@@ -48,6 +48,11 @@ export function getDailyMarketData(
 
     const ov = (sessionOverrides[s.id] || {}) as SessionOverride;
     
+    // 수능일 등 특정일에 세션이 비활성화된 경우 스킵
+    if (ov.disabled) {
+      continue;
+    }
+    
     let fallbackStart = s.startTimeLocal;
     let fallbackEnd = s.endTimeLocal;
     if (holiday && holiday.isHalfDay && !ov.startTimeLocal && !ov.endTimeLocal) {

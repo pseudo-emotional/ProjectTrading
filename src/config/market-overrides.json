@@ -30,15 +30,15 @@
     "session_overrides": {
       "2026-11-19": {
         "reason": "대학수학능력시험",
-        "kr_pre": { "startTimeLocal": "09:00", "endTimeLocal": "09:50" },
+        "kr_pre": { "disabled": true },
         "kr_reg": { "startTimeLocal": "10:00", "endTimeLocal": "16:30" },
-        "kr_after": { "startTimeLocal": "16:30", "endTimeLocal": "18:00" }
+        "kr_after": { "startTimeLocal": "16:40", "endTimeLocal": "20:00" }
       },
       "2027-11-18": {
         "reason": "대학수학능력시험(예상)",
-        "kr_pre": { "startTimeLocal": "09:00", "endTimeLocal": "09:50" },
+        "kr_pre": { "disabled": true },
         "kr_reg": { "startTimeLocal": "10:00", "endTimeLocal": "16:30" },
-        "kr_after": { "startTimeLocal": "16:30", "endTimeLocal": "18:00" }
+        "kr_after": { "startTimeLocal": "16:40", "endTimeLocal": "20:00" }
       }
     }
   },

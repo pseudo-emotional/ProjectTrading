@@ -25,6 +25,7 @@ export interface SessionOverride {
   endTimeLocal?: string;
   startDayOffset?: number;
   endDayOffset?: number;
+  disabled?: boolean;
 }
 
 export interface DayOverride {
