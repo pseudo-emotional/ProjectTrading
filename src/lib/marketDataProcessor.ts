@@ -1,4 +1,5 @@
-import { format, isWeekend } from "date-fns";
+import { format, isWeekend, subDays } from "date-fns";
+import { getTimezoneOffset } from "date-fns-tz";
 import { MarketSession, Holiday, MarketOverrides, CountryDailyData, SessionOverride } from "./types";
 
 
@@ -18,12 +19,33 @@ export function getDailyMarketData(
   const countryOverrides = rawOverrides?.[countryId] || {};
   const sessionOverrides = countryOverrides.session_overrides?.[dateStr] || {};
   
+  let dstStatus: "start" | "end" | undefined = undefined;
+  if (countrySessions.length > 0) {
+    const tz = countrySessions[0].timezone;
+    if (tz) {
+      // UTC 12시 기준으로 오프셋 계산 (자정 경계 시간차 이슈 회피)
+      const noonToday = new Date(`${dateStr}T12:00:00Z`);
+      const noonYesterday = subDays(noonToday, 1);
+      const offsetToday = getTimezoneOffset(tz, noonToday);
+      const offsetYesterday = getTimezoneOffset(tz, noonYesterday);
+
+      if (offsetToday !== offsetYesterday) {
+        if (offsetToday > offsetYesterday) {
+          dstStatus = "start";
+        } else {
+          dstStatus = "end";
+        }
+      }
+    }
+  }
+
   const result: CountryDailyData = {
     country: countryId,
     dateStr,
     status: "개장",
     reason: "",
     sessions: [],
+    ...(dstStatus ? { dstStatus } : {})
   };
 
   if (isWknd) {

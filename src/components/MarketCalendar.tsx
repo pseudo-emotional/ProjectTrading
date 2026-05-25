@@ -181,6 +181,7 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     let closedCount = 0;
     let earlyCount = 0;
     let lateCount = 0;
+    let dstBadge: "start" | "end" | null = null;
     
     const dateStr = format(arg.date, "yyyy-MM-dd");
 
@@ -191,34 +192,49 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
       else if (status === "조기폐장") earlyCount++;
       else if (status === "지연개장") lateCount++;
       else openCount++;
+      
+      if (dailyData.dstStatus) {
+        dstBadge = dailyData.dstStatus;
+      }
     });
 
     const isWknd = isWeekend(arg.date);
 
     return (
-      <div className="flex items-center justify-between w-full px-1">
-        <div className="flex items-center gap-1">
-          {selectedCountries.length > 0 && (
-            <div 
-              className={`holiday-badge-btn flex gap-0.5 text-[9px] font-semibold px-1 py-0.5 rounded cursor-pointer ${
-                isWknd ? "bg-slate-50 text-slate-400" : "bg-slate-100 hover:bg-slate-200"
-              }`}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!isWknd) setHolidayPopover({ date: dateStr, x: e.clientX, y: e.clientY });
-              }}
-              title="휴장일 상세 보기"
-            >
-              <span className={openCount > 0 ? "text-emerald-600" : "text-slate-400"}>장{openCount}</span>
-              {earlyCount > 0 && <span className="text-amber-500">조{earlyCount}</span>}
-              {lateCount > 0 && <span className="text-amber-500">지{lateCount}</span>}
-              <span className={closedCount > 0 ? "text-rose-500" : "text-slate-400"}>휴{closedCount}</span>
-            </div>
-          )}
+      <div className="flex flex-col w-full h-full justify-between">
+        <div className="flex items-start justify-between w-full px-1 mt-0.5">
+          <div className="flex items-center gap-1">
+            {selectedCountries.length > 0 && (
+              <div 
+                className={`holiday-badge-btn flex gap-0.5 text-[9px] font-semibold px-1 py-0.5 rounded cursor-pointer ${
+                  isWknd ? "bg-slate-50 text-slate-400" : "bg-slate-100 hover:bg-slate-200"
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isWknd) setHolidayPopover({ date: dateStr, x: e.clientX, y: e.clientY });
+                }}
+                title="휴장일 상세 보기"
+              >
+                <span className={openCount > 0 ? "text-emerald-600" : "text-slate-400"}>장{openCount}</span>
+                {earlyCount > 0 && <span className="text-amber-500">조{earlyCount}</span>}
+                {lateCount > 0 && <span className="text-amber-500">지{lateCount}</span>}
+                <span className={closedCount > 0 ? "text-rose-500" : "text-slate-400"}>휴{closedCount}</span>
+              </div>
+            )}
+          </div>
+          <span className={`text-sm font-medium ${isWknd ? 'text-slate-400' : 'text-slate-700'}`}>
+            {arg.dayNumberText}
+          </span>
         </div>
-        <span className={`text-sm font-medium ${isWknd ? 'text-slate-400' : 'text-slate-700'}`}>
-          {arg.dayNumberText}
-        </span>
+        {dstBadge && (
+          <div className="w-full flex justify-center mb-0.5">
+            <span className={`text-[9px] font-extrabold px-1.5 py-[2px] rounded-sm shadow-sm ${
+              dstBadge === "start" ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"
+            }`}>
+              {dstBadge === "start" ? "🌞 서머타임 시작" : "🌜 서머타임 종료"}
+            </span>
+          </div>
+        )}
       </div>
     );
   };

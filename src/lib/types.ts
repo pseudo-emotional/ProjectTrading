@@ -59,4 +59,5 @@ export interface CountryDailyData {
   status: "개장" | "휴장" | "조기폐장" | "지연개장";
   reason: string;
   sessions: ProcessedSession[];
+  dstStatus?: "start" | "end";
 }
