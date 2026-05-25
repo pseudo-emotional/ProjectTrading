@@ -7,10 +7,10 @@ import {
   startOfMonth, endOfMonth,
   addDays, subDays, addMonths, subMonths,
 } from "date-fns";
-import { formatInTimeZone } from "date-fns-tz";
-import { getSessionsForDate } from "../lib/marketRules";
-import { Holiday } from "../lib/mockData";
+import { formatInTimeZone, toDate } from "date-fns-tz";
 import MarketCalendar from "./MarketCalendar";
+import { createMarketDataCache } from "../lib/marketDataCache";
+import { Holiday, MarketSession, MarketOverrides } from "../lib/types";
 
 // 색상 체계 (데스크톱 동일)
 const SESSION_COLORS: Record<string, string> = {
@@ -32,6 +32,8 @@ interface Props {
   selectedCountries: string[];
   setSelectedCountries: React.Dispatch<React.SetStateAction<string[]>>;
   holidays: Holiday[];
+  sessions: MarketSession[];
+  overrides?: MarketOverrides;
   onRefresh: () => void;
   isRefreshing: boolean;
   timezones: { value: string; label: string }[];
@@ -41,7 +43,7 @@ interface Props {
 export default function MobileMarketView({
   timezone, setTimezone,
   selectedCountries, setSelectedCountries,
-  holidays, onRefresh, isRefreshing,
+  holidays, sessions, overrides = {}, onRefresh, isRefreshing,
   timezones, allCountries,
 }: Props) {
   // 세션 스토리지에서 상태 복구
@@ -79,8 +81,12 @@ export default function MobileMarketView({
   }, [currentDate, viewMode, dayViewMode]);
 
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const [holidayPopover, setHolidayPopover] = useState<string | null>(null); // yyyy-MM-dd or null
+  const [holidayPopover, setHolidayPopover] = useState<string | null>(null);
   const [teleportDate, setTeleportDate] = useState<string>("");
+
+  const getCachedData = React.useMemo(() => {
+    return createMarketDataCache(sessions, holidays, overrides || {});
+  }, [sessions, holidays, overrides]);
 
   const closeMoreMenu = () => {
     setShowMoreMenu(false);
@@ -99,19 +105,26 @@ export default function MobileMarketView({
       return;
     }
 
+    let ticking = false;
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      const lastScrollY = lastScrollYRef.current;
-      
-      if (currentScrollY < 50) {
-        setIsHeaderVisible(true);
-      } else if (currentScrollY > lastScrollY && currentScrollY - lastScrollY > 5) {
-        setIsHeaderVisible(false); // 스크롤 내리면 숨김
-      } else if (currentScrollY < lastScrollY && lastScrollY - currentScrollY > 5) {
-        setIsHeaderVisible(true);  // 스크롤 올리면 보임
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const currentScrollY = window.scrollY;
+          const lastScrollY = lastScrollYRef.current;
+          
+          if (currentScrollY < 50) {
+            setIsHeaderVisible(true);
+          } else if (currentScrollY > lastScrollY && currentScrollY - lastScrollY > 5) {
+            setIsHeaderVisible(false); // 스크롤 내리면 숨김
+          } else if (currentScrollY < lastScrollY && lastScrollY - currentScrollY > 5) {
+            setIsHeaderVisible(true);  // 스크롤 올리면 보임
+          }
+          
+          lastScrollYRef.current = currentScrollY;
+          ticking = false;
+        });
+        ticking = true;
       }
-      
-      lastScrollYRef.current = currentScrollY;
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
@@ -121,15 +134,17 @@ export default function MobileMarketView({
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
   // ──── 유틸 ────
-  const fmtTime = (kst: string, date: Date, offset: number) => {
-    const [h, m] = kst.split(":").map(Number);
-    const d = new Date(date); d.setDate(d.getDate() + offset);
-    return formatInTimeZone(new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), h - 9, m)), timezone, "HH:mm");
-  };
-
-  const isClosed = (cid: string, date: Date) => {
-    if (isWeekend(date)) return true;
-    return holidays.some(h => h.date === format(date, "yyyy-MM-dd") && h.country === cid);
+  const fmtTime = (localTime: string, date: Date, sessionTimezone: string, isEnd = false, startTimeStr?: string, startDayOffset = 0, endDayOffset = 0) => {
+    let d = new Date(date);
+    const offset = isEnd ? endDayOffset : startDayOffset;
+    d.setDate(d.getDate() + offset);
+    
+    if (isEnd && endDayOffset === 0 && startDayOffset === 0 && startTimeStr && localTime < startTimeStr) {
+      d.setDate(d.getDate() + 1);
+    }
+    const dateStr = format(d, "yyyy-MM-dd");
+    const zonedDate = toDate(`${dateStr} ${localTime}`, { timeZone: sessionTimezone });
+    return formatInTimeZone(zonedDate, timezone, "HH:mm");
   };
 
   const getHolName = (cid: string, date: Date) => {
@@ -175,22 +190,28 @@ export default function MobileMarketView({
   }
 
   // 데이 뷰 헤더용: 선택된 국가 중 휴장인 곳이 있는지
-  const hasAnyClosed = selectedCountries.some(c => isClosed(c, currentDate));
+  const hasAnyClosed = selectedCountries.some(c => {
+    const dailyData = getCachedData(currentDate, c);
+    return dailyData.status === "휴장";
+  });
 
   // ════════════════════════════════════════════
   //  DAY VIEW
   // ════════════════════════════════════════════
   const renderDayView = () => {
-    const sessions = getSessionsForDate(currentDate);
     const wknd = isWeekend(currentDate);
     return (
       <div className={`flex flex-col w-full ${dayViewMode === "card" ? "pb-8" : "pb-[80px]"}`}>
         {dayViewMode === "card" ? (
           <div className="flex flex-col gap-3 px-4 py-3">
             {selectedCountries.map(cid => {
-              const cs = sessions.filter(s => s.country === cid);
-              const closed = isClosed(cid, currentDate);
-              const holName = getHolName(cid, currentDate);
+              const dailyData = getCachedData(currentDate, cid);
+              const { status, reason, sessions: processedSessions } = dailyData;
+
+              let badgeColor = "bg-emerald-100 text-emerald-600";
+              if (status === "휴장") badgeColor = "bg-rose-100 text-rose-600";
+              else if (status === "조기폐장" || status === "지연개장") badgeColor = "bg-amber-100 text-amber-600";
+
               return (
                 <div key={cid} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 bg-slate-50/80 border-b border-slate-100">
@@ -198,31 +219,36 @@ export default function MobileMarketView({
                       <span className="text-xl leading-none">{FLAGS[cid]}</span>
                       <span className="font-bold text-slate-800 text-[15px]">{NAMES[cid]}</span>
                     </div>
-                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${closed ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-600"}`}>
-                      {closed ? "휴장" : "개장"}
+                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${badgeColor}`}>
+                      {status}
                     </span>
                   </div>
                   <div className="px-4 py-3">
-                    {closed ? (
+                    {status === "휴장" ? (
                       <div className="flex flex-col items-center justify-center py-5 text-slate-400">
                         <svg className="w-7 h-7 mb-1.5 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                         </svg>
-                        <span className="text-sm font-medium">{wknd ? "주말 휴장" : holName || "휴장일"}</span>
+                        <span className="text-sm font-medium">{reason || "휴장일"}</span>
                       </div>
                     ) : (
                       <div className="flex flex-col gap-2.5">
-                        {cs.map(s => (
-                          <div key={s.id} className="flex items-center gap-3">
-                            <div className="w-1 h-9 rounded-full flex-shrink-0" style={{ backgroundColor: SESSION_COLORS[s.type] || "#6b7280" }} />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[13px] font-semibold text-slate-700 truncate">{s.type}</div>
-                              <div className="text-[12px] text-slate-500 font-mono tracking-tight">
-                                {fmtTime(s.startTimeLocal, currentDate, s.startDayOffset)} – {fmtTime(s.endTimeLocal, currentDate, s.endDayOffset)}
+                        {processedSessions.map(s => {
+                          return (
+                            <div key={s.id} className="flex items-center gap-3">
+                              <div className="w-1 h-9 rounded-full flex-shrink-0" style={{ backgroundColor: SESSION_COLORS[s.type] || "#6b7280" }} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <div className="text-[13px] font-semibold text-slate-700 truncate">{s.type}</div>
+                                  {s.isAbnormal && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">시간변경</span>}
+                                </div>
+                                <div className="text-[12px] text-slate-500 font-mono tracking-tight">
+                                  {fmtTime(s.startTimeLocal, currentDate, s.timezone, false, undefined, s.startDayOffset, s.endDayOffset)} – {fmtTime(s.endTimeLocal, currentDate, s.timezone, true, s.startTimeLocal, s.startDayOffset, s.endDayOffset)}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -231,14 +257,18 @@ export default function MobileMarketView({
             })}
           </div>
         ) : (
-          <div className="w-full px-1 py-1">
-            <MarketCalendar 
-              timezone={timezone}
-              selectedCountries={selectedCountries}
-              holidays={holidays}
-              jumpDate={format(currentDate, "yyyy-MM-dd")}
-              isMobileTimeline={true}
-            />
+          <>
+            <div className="flex-1 min-h-0 bg-white relative">
+              <MarketCalendar 
+                timezone={timezone} 
+                selectedCountries={selectedCountries} 
+                holidays={holidays} 
+                sessions={sessions}
+                overrides={overrides}
+                jumpDate={currentDate.toISOString()}
+                isMobileTimeline={true}
+              />
+            </div>
             {/* 타임라인 전용 하단 고정 범례 */}
             <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-slate-200 px-3 py-2.5 flex items-center justify-center gap-3 flex-wrap shadow-[0_-4px_10px_rgba(0,0,0,0.03)] z-40" style={{ paddingBottom: "calc(0.625rem + env(safe-area-inset-bottom, 0px))" }}>
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />정규장</div>
@@ -246,7 +276,7 @@ export default function MobileMarketView({
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600"><span className="w-2.5 h-2.5 rounded-full bg-blue-500" />애프터</div>
               <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600"><span className="w-2.5 h-2.5 rounded-full bg-amber-500" />점심시간</div>
             </div>
-          </div>
+          </>
         )}
       </div>
     );
@@ -289,21 +319,23 @@ export default function MobileMarketView({
               {/* 하단: 전체 국가 상태 (flex-wrap으로 두 줄 자동 배치) */}
               <div className="flex items-center gap-x-3 gap-y-1 flex-wrap">
                 {selectedCountries.map(cid => {
-                  const closed = isClosed(cid, day);
+                  const status = getCachedData(day, cid).status;
+                  const closed = status === "휴장";
+                  const abnormal = status === "조기폐장" || status === "지연개장";
                   return (
                     <div 
                       key={cid} 
                       className="flex items-center gap-1"
                       onClick={(e) => {
-                        if (closed) {
+                        if (closed || abnormal) {
                           e.stopPropagation();
                           setHolidayPopover(format(day, "yyyy-MM-dd"));
                         }
                       }}
                     >
                       <span className="text-[13px] leading-none">{FLAGS[cid]}</span>
-                      <span className={`text-[11px] font-bold ${closed ? "text-rose-500" : "text-emerald-600"}`}>
-                        {closed ? "휴" : "장"}
+                      <span className={`text-[11px] font-bold ${closed ? "text-rose-500" : abnormal ? "text-amber-500" : "text-emerald-600"}`}>
+                        {closed ? "휴" : status === "조기폐장" ? "조" : status === "지연개장" ? "지" : "장"}
                       </span>
                     </div>
                   );
@@ -322,22 +354,30 @@ export default function MobileMarketView({
   const renderMonthView = () => {
     const mStart = startOfMonth(currentDate);
     const mEnd = endOfMonth(currentDate);
-    const calStart = startOfWeek(mStart, { weekStartsOn: 0 });
-    const calEnd = endOfWeek(mEnd, { weekStartsOn: 0 });
+    const calStart = startOfWeek(mStart, { weekStartsOn: 1 });
+    const calEnd = endOfWeek(mEnd, { weekStartsOn: 1 });
     const allDays = eachDayOfInterval({ start: calStart, end: calEnd });
+    
+    const REORDERED_DAY_NAMES = ["월", "화", "수", "목", "금", "토", "일"];
 
     return (
       <div className="px-4 py-3 pb-8">
         <div className="grid grid-cols-7 gap-1 mb-2">
-          {DAY_NAMES.map(d => <div key={d} className="text-center text-[11px] font-bold text-slate-400 py-1">{d}</div>)}
+          {REORDERED_DAY_NAMES.map(d => <div key={d} className="text-center text-[11px] font-bold text-slate-400 py-1">{d}</div>)}
         </div>
         <div className="grid grid-cols-7 gap-1">
           {allDays.map(day => {
             const isCur = day.getMonth() === currentDate.getMonth();
             const wknd = isWeekend(day);
             const today = format(day, "yyyy-MM-dd") === todayStr;
-            let openC = 0, closedC = 0;
-            if (isCur) selectedCountries.forEach(c => { if (isClosed(c, day)) closedC++; else openC++; });
+            let openC = 0, closedC = 0, earlyC = 0, lateC = 0;
+            if (isCur) selectedCountries.forEach(c => { 
+              const st = getCachedData(day, c).status;
+              if (st === "휴장") closedC++; 
+              else if (st === "조기폐장") earlyC++;
+              else if (st === "지연개장") lateC++;
+              else openC++; 
+            });
 
             return (
               <button
@@ -353,6 +393,8 @@ export default function MobileMarketView({
                 {isCur && selectedCountries.length > 0 && (
                   <div className="flex gap-1 mt-0.5">
                     {openC > 0 && <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded">{openC}</span>}
+                    {earlyC > 0 && <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1 rounded">{earlyC}</span>}
+                    {lateC > 0 && <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1 rounded">{lateC}</span>}
                     {closedC > 0 && <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-1 rounded">{closedC}</span>}
                   </div>
                 )}
@@ -395,11 +437,8 @@ export default function MobileMarketView({
           <div className="px-5 py-4 flex flex-col gap-3 max-h-[50vh] overflow-y-auto mobile-scroll">
             {wknd && <p className="text-xs text-amber-600 font-medium mb-1">⚠️ 이 날은 주말입니다.</p>}
             {selectedCountries.map(cid => {
-              const closed = isClosed(cid, popDate);
-              const holName = getHolName(cid, popDate);
-              let reason = "";
-              if (wknd) reason = "주말";
-              else if (holName) reason = holName;
+              const dailyData = getCachedData(popDate, cid);
+              const { status, reason } = dailyData;
 
               return (
                 <div key={cid} className="flex items-center justify-between py-2">
@@ -408,8 +447,8 @@ export default function MobileMarketView({
                     <span className="font-semibold text-slate-700 text-[14px]">{NAMES[cid]}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${closed ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-600"}`}>
-                      {closed ? "휴장" : "개장"}
+                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${status === "휴장" ? "bg-rose-100 text-rose-600" : status === "조기폐장" || status === "지연개장" ? "bg-amber-100 text-amber-600" : "bg-emerald-100 text-emerald-600"}`}>
+                      {status}
                     </span>
                     {reason && <span className="text-[11px] text-slate-500 max-w-[100px] truncate">{reason}</span>}
                   </div>

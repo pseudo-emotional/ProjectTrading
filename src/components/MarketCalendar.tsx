@@ -6,11 +6,12 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import momentTimezonePlugin from "@fullcalendar/moment-timezone";
 import resourceTimeGridPlugin from "@fullcalendar/resource-timegrid";
-import { formatInTimeZone } from "date-fns-tz";
+import { addDays, subDays, startOfWeek, endOfWeek, isWeekend } from "date-fns";
+import { formatInTimeZone, toDate } from "date-fns-tz";
 import { generateEvents } from "../lib/eventGenerator";
-import { Holiday } from "../lib/mockData";
-import { format, isWeekend } from "date-fns";
-import { getSessionsForDate } from "../lib/marketRules";
+import { createMarketDataCache } from "../lib/marketDataCache";
+import { Holiday, MarketSession, MarketOverrides } from "../lib/types";
+import { format } from "date-fns";
 
 interface MarketCalendarProps {
   timezone: string;
@@ -18,9 +19,11 @@ interface MarketCalendarProps {
   holidays: Holiday[];
   jumpDate?: string | null;
   isMobileTimeline?: boolean;
+  sessions: MarketSession[];
+  overrides?: MarketOverrides;
 }
 
-export default function MarketCalendar({ timezone, selectedCountries, holidays, jumpDate, isMobileTimeline = false }: MarketCalendarProps) {
+export default function MarketCalendar({ timezone, selectedCountries, holidays, jumpDate, isMobileTimeline = false, sessions, overrides }: MarketCalendarProps) {
   const calendarRef = useRef<FullCalendar>(null);
   const [events, setEvents] = useState<any[]>([]);
   
@@ -40,77 +43,60 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     title: countryNameMap[countryId] || countryId
   }));
 
+  const getCachedData = React.useMemo(() => {
+    return createMarketDataCache(sessions, holidays, overrides || {});
+  }, [sessions, holidays, overrides]);
+
   const handleDatesSet = (dateInfo: any) => {
     const viewType = dateInfo.view.type;
-    const generated = generateEvents(dateInfo.start, dateInfo.end, timezone, selectedCountries, holidays, viewType);
+    const generated = generateEvents(dateInfo.start, dateInfo.end, timezone, selectedCountries, holidays, sessions, overrides, viewType);
     setEvents(generated);
 
-    // FullCalendar 내부 렌더링 후 타이틀 DOM을 조작하여 주차 버튼 주입
-    setTimeout(() => {
-      const titleEl = document.querySelector('.fc-toolbar-title');
-      if (titleEl) {
-        const existingBtn = titleEl.querySelector('.custom-week-btn');
-        if (existingBtn) existingBtn.remove();
-
-        if (viewType === 'resourceTimeGridDay') {
-          const weekNum = format(dateInfo.view.currentStart, "w");
-          
-          titleEl.classList.add('relative'); // 날짜 텍스트를 정중앙에 고정하기 위해 relative 부여
-
-          const btn = document.createElement('span');
-          btn.className = "custom-week-btn absolute top-1/2 -translate-y-1/2 left-[calc(100%+12px)] px-2.5 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-200 text-sm rounded-full font-extrabold cursor-pointer hover:bg-indigo-100 transition-colors shadow-sm whitespace-nowrap";
-          btn.innerText = `W${weekNum}`;
-          btn.title = "이 주차의 주간(Week) 화면으로 이동";
-          btn.onclick = () => {
-            if (calendarRef.current) {
-              calendarRef.current.getApi().changeView('resourceTimeGridWeek', dateInfo.view.currentStart);
-            }
-          };
-          
-          titleEl.appendChild(btn);
-        }
-      }
-    }, 10);
-
-    // 2. 타이틀 클릭 시 Month 뷰로 이동하는 편의성 기능 (navLinks 미지원 영역)
-    setTimeout(() => {
-      const titleEl = document.querySelector('.fc-toolbar-title') as HTMLElement;
-      if (titleEl) {
-        titleEl.style.cursor = 'pointer';
-        titleEl.style.textDecoration = 'underline';
-        titleEl.style.textDecorationColor = '#cbd5e1';
-        titleEl.title = '월간 달력으로 이동';
-        titleEl.onclick = () => {
-          const api = calendarRef.current?.getApi();
-          if (api && api.view.type !== 'dayGridMonth') {
-            api.changeView('dayGridMonth');
-          }
-        };
-      }
-    }, 10);
+    // 데스크톱 뷰일 경우 현재 달력 상태를 저장
+    if (!isMobileTimeline && typeof window !== 'undefined') {
+      sessionStorage.setItem("desktop_calendar_view", viewType);
+      sessionStorage.setItem("desktop_calendar_date", dateInfo.view.currentStart.toISOString());
+    }
   };
 
   useEffect(() => {
     if (!calendarRef.current) return;
     const api = calendarRef.current.getApi();
     const currentView = api.view;
-    const start = currentView.activeStart;
-    const end = currentView.activeEnd;
+    const start = new Date(api.view.currentStart);
+    const end = new Date(api.view.currentEnd);
     const viewType = currentView.type; // 현재 뷰 타입 가져오기
     
-    const generated = generateEvents(start, end, timezone, selectedCountries, holidays, viewType);
+    const generated = generateEvents(start, end, timezone, selectedCountries, holidays, sessions, overrides, viewType);
     setEvents(generated);
-  }, [timezone, selectedCountries, holidays]);
+  }, [timezone, selectedCountries, holidays, sessions, overrides]);
 
-  // Jump to specific date when jumpDate prop changes
+  const [initialView] = useState(() => {
+    if (typeof window !== 'undefined' && !isMobileTimeline) {
+      const saved = sessionStorage.getItem("desktop_calendar_view");
+      if (saved) return saved;
+    }
+    return isMobileTimeline ? "resourceTimeGridDay" : "resourceTimeGridWeek";
+  });
+
+  const [initialDate] = useState(() => {
+    if (jumpDate) return jumpDate;
+    if (typeof window !== 'undefined' && !isMobileTimeline) {
+      const saved = sessionStorage.getItem("desktop_calendar_date");
+      if (saved) return saved;
+    }
+    return new Date().toISOString();
+  });
+
+  // Jump to specific date when jumpDate prop changes dynamically
   useEffect(() => {
     if (jumpDate && calendarRef.current) {
       const api = calendarRef.current.getApi();
-      setTimeout(() => {
-        api.gotoDate(jumpDate);
-      }, 0);
+      api.gotoDate(jumpDate);
     }
   }, [jumpDate]);
+
+
 
   // 커스텀 네비게이션 핸들러 (버튼 클릭 시 데이 뷰로 넘어가는 근본 문제 해결)
   const handleNavLinkDayClick = (date: Date, jsEvent: any) => {
@@ -129,6 +115,8 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     }
   };
 
+
+
   const renderDayHeader = (arg: any) => {
     // 1. Month View: 요일 이름만 출력하고 통계는 숨김
     if (arg.view.type === 'dayGridMonth') {
@@ -140,15 +128,19 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     }
 
     // 2. Week/Day View: 날짜 이름과 함께 개장/휴장 통계 출력
-    const dateStr = format(arg.date, "yyyy-MM-dd");
     let openCount = 0;
     let closedCount = 0;
+    let earlyCount = 0;
+    let lateCount = 0;
     
+    const dateStr = format(arg.date, "yyyy-MM-dd");
+
     selectedCountries.forEach(countryId => {
-      const isHoliday = holidays.some(h => h.date === dateStr && h.country === countryId);
-      const isWknd = isWeekend(arg.date);
-      if (isWknd) closedCount++;
-      else if (isHoliday) closedCount++;
+      const dailyData = getCachedData(dateStr, countryId);
+      const status = dailyData.status;
+      if (status === "휴장") closedCount++;
+      else if (status === "조기폐장") earlyCount++;
+      else if (status === "지연개장") lateCount++;
       else openCount++;
     });
 
@@ -166,15 +158,16 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
                 setHolidayPopover({ date: dateStr, x: e.clientX, y: e.clientY });
               }
             }}
-            className={`holiday-badge-btn mt-1 text-[10px] font-semibold px-2 py-0.5 rounded transition-colors no-underline hover:no-underline ${
+            className={`holiday-badge-btn mt-1 text-[10px] font-semibold px-2 py-0.5 rounded transition-colors no-underline hover:no-underline flex items-center gap-1 ${
               isWknd 
                 ? "bg-slate-50 text-slate-400 cursor-default" 
                 : "bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer"
             }`}
           >
-            <span className={openCount > 0 ? "text-emerald-600" : ""}>개장 {openCount}</span>
-            <span className="mx-1 text-slate-300">|</span>
-            <span className={closedCount > 0 ? "text-rose-500" : ""}>휴장 {closedCount}</span>
+            {openCount > 0 && <span className="text-emerald-600">개장 {openCount}</span>}
+            {earlyCount > 0 && <span className="text-amber-500">조기 {earlyCount}</span>}
+            {lateCount > 0 && <span className="text-amber-500">지연 {lateCount}</span>}
+            {closedCount > 0 && <span className="text-rose-500">휴장 {closedCount}</span>}
           </button>
         )}
       </div>
@@ -184,14 +177,19 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
   const renderDayCellContent = (arg: any) => {
     if (arg.view.type !== 'dayGridMonth') return arg.dayNumberText;
 
-    const dateStr = format(arg.date, "yyyy-MM-dd");
     let openCount = 0;
     let closedCount = 0;
+    let earlyCount = 0;
+    let lateCount = 0;
+    
+    const dateStr = format(arg.date, "yyyy-MM-dd");
+
     selectedCountries.forEach(countryId => {
-      const isHoliday = holidays.some(h => h.date === dateStr && h.country === countryId);
-      const isWknd = isWeekend(arg.date);
-      if (isWknd) closedCount++;
-      else if (isHoliday) closedCount++;
+      const dailyData = getCachedData(dateStr, countryId);
+      const status = dailyData.status;
+      if (status === "휴장") closedCount++;
+      else if (status === "조기폐장") earlyCount++;
+      else if (status === "지연개장") lateCount++;
       else openCount++;
     });
 
@@ -202,7 +200,7 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
         <div className="flex items-center gap-1">
           {selectedCountries.length > 0 && (
             <div 
-              className={`flex gap-0.5 text-[9px] font-semibold px-1 py-0.5 rounded cursor-pointer ${
+              className={`holiday-badge-btn flex gap-0.5 text-[9px] font-semibold px-1 py-0.5 rounded cursor-pointer ${
                 isWknd ? "bg-slate-50 text-slate-400" : "bg-slate-100 hover:bg-slate-200"
               }`}
               onClick={(e) => {
@@ -212,7 +210,8 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
               title="휴장일 상세 보기"
             >
               <span className={openCount > 0 ? "text-emerald-600" : "text-slate-400"}>장{openCount}</span>
-              <span className="text-slate-300">|</span>
+              {earlyCount > 0 && <span className="text-amber-500">조{earlyCount}</span>}
+              {lateCount > 0 && <span className="text-amber-500">지{lateCount}</span>}
               <span className={closedCount > 0 ? "text-rose-500" : "text-slate-400"}>휴{closedCount}</span>
             </div>
           )}
@@ -231,24 +230,24 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     // 일간(Day) 뷰에서는 리소스(국가) 아래에 해당 일자의 개장/휴장 여부를 표시
     if (arg.view.type === 'resourceTimeGridDay') {
       const dateStr = format(arg.view.currentStart, "yyyy-MM-dd");
-      const isHol = holidays.some(h => h.date === dateStr && h.country === countryId);
+      const dailyData = getCachedData(dateStr, countryId);
+      const { status } = dailyData;
       const isWknd = isWeekend(arg.view.currentStart);
-      const isClosed = isWknd || isHol;
+      
+      let badgeColor = "bg-emerald-50 text-emerald-600 cursor-default";
+      if (status === "휴장") badgeColor = "bg-rose-50 text-rose-500 cursor-pointer hover:bg-rose-100";
+      else if (status === "조기폐장" || status === "지연개장") badgeColor = "bg-amber-50 text-amber-600 cursor-pointer hover:bg-amber-100";
       
       return (
-        <div className="flex flex-col items-center justify-center py-1">
-          <span className="font-bold text-slate-700">{countryName}</span>
+        <div className="flex flex-col items-center justify-center py-1.5">
+          <span className="font-extrabold text-[15px] text-slate-700">{countryName}</span>
           <div 
             onClick={(e) => {
               e.stopPropagation();
               if (!isWknd) setHolidayPopover({ date: dateStr, x: e.clientX, y: e.clientY });
             }}
-            className={`mt-1 text-[10px] px-2 py-0.5 rounded font-semibold transition-colors ${
-            isClosed 
-              ? "bg-rose-50 text-rose-500 cursor-pointer hover:bg-rose-100" 
-              : "bg-emerald-50 text-emerald-600 cursor-default"
-          }`}>
-            {isClosed ? "휴장" : "개장"}
+            className={`mt-1 text-xs px-2.5 py-0.5 rounded-md font-semibold transition-colors ${badgeColor}`}>
+            {status}
           </div>
         </div>
       );
@@ -294,17 +293,35 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
     else if (shortType === "데이마켓") shortType = "데이";
 
     const isDayView = arg.view.type === 'resourceTimeGridDay';
+    const durationMin = arg.event.end && arg.event.start ? (arg.event.end.getTime() - arg.event.start.getTime()) / 60000 : 120;
+    const isShort = durationMin <= 75 && !shortType.includes("점심");
+
+    if (isShort) {
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden px-1">
+          <div className="flex flex-col items-center justify-center gap-0.5 w-full overflow-hidden">
+            <span className="font-extrabold text-[0.8rem] leading-none text-white/95 whitespace-nowrap truncate">{countryName}</span>
+            <span className="text-[0.75rem] font-medium opacity-90 leading-none whitespace-nowrap truncate">{shortType}</span>
+          </div>
+          {isDayView && (
+            <div className="text-[0.65rem] font-mono text-emerald-100 mt-1 tracking-tighter leading-none whitespace-nowrap bg-black/20 px-1.5 py-0.5 rounded-sm">
+              {formatInTimeZone(arg.event.start, timezone, 'HH:mm')}-{formatInTimeZone(arg.event.end, timezone, 'HH:mm')}
+            </div>
+          )}
+        </div>
+      );
+    }
 
     return (
-      <div className="w-full h-full flex flex-col items-center justify-start overflow-hidden px-0.5 pt-0.5">
-        <div className="font-extrabold text-[0.7rem] leading-tight text-white/95 whitespace-nowrap overflow-hidden text-ellipsis w-full text-center">
+      <div className="w-full h-full flex flex-col items-center justify-start overflow-hidden px-1 pt-1">
+        <div className="font-extrabold text-[0.85rem] leading-tight text-white/95 whitespace-nowrap overflow-hidden text-ellipsis w-full text-center">
           {countryName}
         </div>
-        <div className="text-[0.6rem] font-medium opacity-90 leading-tight whitespace-nowrap overflow-hidden text-ellipsis w-full text-center mt-0.5 tracking-tight">
+        <div className="text-[0.75rem] font-medium opacity-90 leading-tight whitespace-nowrap overflow-hidden text-ellipsis w-full text-center mt-0.5 tracking-tight">
           {shortType}
         </div>
         {isDayView && (
-          <div className="text-[0.55rem] font-mono text-emerald-100 mt-1 tracking-tighter leading-none whitespace-nowrap bg-black/20 px-1 py-0.5 rounded-sm">
+          <div className="text-[0.65rem] font-mono text-emerald-100 mt-1 tracking-tighter leading-none whitespace-nowrap bg-black/20 px-1.5 py-0.5 rounded-sm">
             {formatInTimeZone(arg.event.start, timezone, 'HH:mm')} - {formatInTimeZone(arg.event.end, timezone, 'HH:mm')}
           </div>
         )}
@@ -333,32 +350,23 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
 
   let popoverContent = null;
   if (holidayPopover) {
-    const isWknd = isWeekend(new Date(holidayPopover.date));
-    const dailySessions = getSessionsForDate(new Date(holidayPopover.date));
-    
     const contentList = selectedCountries.map(country => {
-      const countrySession = dailySessions.find(s => s.country === country);
+      const dailyData = getCachedData(holidayPopover.date, country);
+      const countrySession = sessions.find(s => s.country === country);
       const countryName = countrySession?.countryName || country;
-      const holiday = holidays.find(h => h.date === holidayPopover.date && h.country === country);
       
-      let status = "개장";
-      let reason = "";
-      if (isWknd) {
-        status = "휴장";
-        reason = "주말";
-      } else if (holiday) {
-        status = "휴장";
-        reason = holiday.name;
-      } else if (!countrySession) {
-        status = "휴장";
-        reason = "세션 없음";
-      }
+      const status = dailyData.status;
+      const reason = dailyData.reason || (!countrySession ? "세션 없음" : "");
 
       return (
         <div key={country} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
           <span className="font-semibold text-slate-700">{countryName}</span>
           <div className="flex items-center gap-2">
-            <span className={`text-xs px-2 py-1 rounded ${status === "개장" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+            <span className={`text-xs px-2 py-1 rounded font-bold ${
+              status === "개장" ? "bg-emerald-100 text-emerald-700" : 
+              status === "조기폐장" || status === "지연개장" ? "bg-amber-100 text-amber-700" :
+              "bg-rose-100 text-rose-700"
+            }`}>
               {status}
             </span>
             {reason && <span className="text-xs text-slate-500">{reason}</span>}
@@ -390,7 +398,7 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
   }
 
   return (
-    <div className="w-full h-full bg-white text-slate-900 rounded-xl shadow-lg p-4 overflow-hidden relative">
+    <div className={`w-full h-full bg-white text-slate-900 rounded-xl shadow-lg p-4 relative ${isMobileTimeline ? '' : 'overflow-hidden'}`}>
       <style>{`
         .fc-event {
           border-radius: 4px;
@@ -420,7 +428,8 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
       <FullCalendar
         ref={calendarRef}
         plugins={[timeGridPlugin, dayGridPlugin, momentTimezonePlugin, resourceTimeGridPlugin]}
-        initialView={isMobileTimeline ? "resourceTimeGridDay" : "resourceTimeGridWeek"}
+        initialView={initialView}
+        initialDate={initialDate}
         resources={resources}
         datesAboveResources={true}
         headerToolbar={isMobileTimeline ? false : {
@@ -448,6 +457,7 @@ export default function MarketCalendar({ timezone, selectedCountries, holidays, 
         navLinkDayClick={handleNavLinkDayClick}
         navLinkWeekClick="resourceTimeGridWeek"
         weekNumbers={true}
+        stickyHeaderDates={true}
       />
 
       {popoverContent}

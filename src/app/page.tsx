@@ -5,7 +5,7 @@ import MarketCalendar from "@/components/MarketCalendar";
 import MobileMarketView from "@/components/MobileMarketView";
 import DatePickerWheel from "@/components/DatePickerWheel";
 import { RefreshCw, Globe, Filter } from "lucide-react";
-import { Holiday } from "@/lib/mockData";
+import { Holiday, MarketSession, MarketOverrides } from "@/lib/types";
 
 export default function Home() {
   const [timezone, setTimezone] = useState("Asia/Seoul");
@@ -13,6 +13,8 @@ export default function Home() {
   const [lastUpdated, setLastUpdated] = useState("업데이트 중...");
   
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [sessions, setSessions] = useState<MarketSession[]>([]);
+  const [overrides, setOverrides] = useState<MarketOverrides>({});
   const [jumpDate, setJumpDate] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [fitToScreen, setFitToScreen] = useState(true);
@@ -43,6 +45,8 @@ export default function Home() {
       const result = await res.json();
       if (result.success) {
         setHolidays(result.data.holidays);
+        setSessions(result.data.sessions);
+        setOverrides(result.data.overrides || {});
         setLastUpdated(new Date().toLocaleString("ko-KR"));
       }
     } catch (err) {
@@ -70,13 +74,7 @@ export default function Home() {
     return <div className="h-screen bg-slate-50" />;
   }
 
-  const toggleCountry = (countryId: string) => {
-    setSelectedCountries(prev => 
-      prev.includes(countryId) 
-        ? prev.filter(c => c !== countryId)
-        : [...prev, countryId]
-    );
-  };
+
 
   return isMobile ? (
     <MobileMarketView
@@ -85,6 +83,8 @@ export default function Home() {
       selectedCountries={selectedCountries}
       setSelectedCountries={setSelectedCountries}
       holidays={holidays}
+      sessions={sessions}
+      overrides={overrides}
       onRefresh={handleRefresh}
       isRefreshing={isRefreshing}
       timezones={timezones}
@@ -236,12 +236,16 @@ export default function Home() {
             ? "flex-1 min-h-0" 
             : "w-full h-[75vh] min-h-[650px]"
         }`}>
-          <MarketCalendar 
-            timezone={timezone} 
-            selectedCountries={selectedCountries} 
-            holidays={holidays} 
-            jumpDate={jumpDate}
-          />
+          <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden relative min-h-0">
+            <MarketCalendar 
+              timezone={timezone} 
+              jumpDate={jumpDate} 
+              selectedCountries={selectedCountries}
+              holidays={holidays}
+              sessions={sessions}
+              overrides={overrides}
+            />
+          </div>
         </div>
       </div>
     </div>

@@ -1,7 +1,16 @@
-import { Holiday } from "./mockData";
 import { addDays, startOfDay, format, isWeekend } from "date-fns";
 import { toDate } from "date-fns-tz";
-import { getSessionsForDate } from "./marketRules";
+import { getDailyMarketData } from "./marketDataProcessor";
+import { MarketSession, Holiday, MarketOverrides } from "./types";
+import { createMarketDataCache } from "./marketDataCache";
+
+const countryOrderMap: Record<string, number> = {
+  "US": 1,
+  "KR": 2,
+  "JP": 3,
+  "CN": 4,
+  "UK": 5
+};
 
 export function generateEvents(
   startDate: Date, 
@@ -9,10 +18,14 @@ export function generateEvents(
   displayTimezone: string,
   selectedCountries: string[],
   holidays: Holiday[],
+  sessions: MarketSession[],
+  overrides: MarketOverrides = {},
   viewType: string = "resourceTimeGridWeek"
 ) {
   const events = [];
   const isMonthView = viewType === "dayGridMonth";
+  const getCachedData = createMarketDataCache(sessions, holidays, overrides);
+
   
   // 중요: 금요일 영업일의 꼬리(토요일 애프터마켓)가 토요일 달력에 표시될 수 있도록,
   // 영업일 탐색은 화면에 보이는 첫 날짜보다 하루 앞(-1일)에서 시작해야 합니다.
@@ -28,50 +41,54 @@ export function generateEvents(
       continue;
     }
 
-    // 2. 그날(Trading Date)의 DST 상태를 반영한 국가별 세션 템플릿(오프셋 포함)을 가져옴
-    const dailySessions = getSessionsForDate(currentTradingDate);
+    // 2. 외부 API에서 받아온 세션 목록(sessions)을 기반으로 순회합니다.
+    // 기존 하드코딩된 DST 함수 대신 date-fns-tz가 타임존 변환을 자동 처리합니다.
     const addedCountriesForMonth = new Set<string>();
+    for (const countryId of selectedCountries) {
+      const dailyData = getCachedData(currentTradingDate, countryId);
 
-    for (const session of dailySessions) {
-      if (!selectedCountries.includes(session.country)) {
-        continue;
-      }
+      // 완전 휴장이면 스킵 (주말이거나 공휴일)
+      if (dailyData.status === "휴장") continue;
 
-      // 3. 공휴일 체크: "해당 영업일(Trading Date)"이 공휴일인지 체크 (달력에 그려질 날짜가 아님)
-      const isHoliday = holidays.some(h => h.date === dateStr && h.country === session.country);
-      if (isHoliday) continue;
-
-      // 월간 뷰(Month View)일 경우, 국가별로 하루에 딱 1개의 요약 이벤트(allDay)만 생성하여 세로 길이를 압축
+      // 월간 뷰일 경우 국가별로 1개 이벤트만 생성
       if (isMonthView) {
-        if (addedCountriesForMonth.has(session.country)) continue;
-        addedCountriesForMonth.add(session.country);
-        
-        events.push({
-          id: `${session.country}_month_${dateStr}`,
-          title: `${session.countryName} - 거래가능`,
-          start: dateStr, // allDay event
-          allDay: true,
-          backgroundColor: "#0ea5e9", // Sky blue for compact look
-          borderColor: "#0ea5e9",
-          extendedProps: {
-            country: session.country,
-            countryName: session.countryName,
-            type: "거래가능",
-            isMonthView: true
-          }
-        });
+        if (!addedCountriesForMonth.has(countryId)) {
+          addedCountriesForMonth.add(countryId);
+          events.push({
+            id: `${countryId}_month_${dateStr}`,
+            title: `${dailyData.sessions[0]?.countryName || countryId} - 거래가능`,
+            start: dateStr, // allDay event
+            allDay: true,
+            backgroundColor: "#0ea5e9", // Sky blue for compact look
+            borderColor: "#0ea5e9",
+            extendedProps: {
+              country: countryId,
+              countryName: dailyData.sessions[0]?.countryName || countryId,
+              type: "거래가능",
+              isMonthView: true
+            }
+          });
+        }
         continue;
       }
 
-      // 4. 주간/일간 뷰(TimeGrid): 오프셋 계산하여 분 단위 세션 블록 생성
-      const actualStartDate = addDays(currentTradingDate, session.startDayOffset);
-      const actualEndDate = addDays(currentTradingDate, session.endDayOffset);
-      
-      const actualStartDateStr = format(actualStartDate, "yyyy-MM-dd");
-      const actualEndDateStr = format(actualEndDate, "yyyy-MM-dd");
+      for (const session of dailyData.sessions) {
 
-      const localStartStr = `${actualStartDateStr} ${session.startTimeLocal}`;
-      const localEndStr = `${actualEndDateStr} ${session.endTimeLocal}`;
+        const startOffset = session.startDayOffset;
+        const endOffset = session.endDayOffset;
+        
+        let actualStartDate = addDays(currentTradingDate, startOffset);
+        let actualEndDate = addDays(currentTradingDate, endOffset);
+        
+        if (session.endTimeLocal < session.startTimeLocal && endOffset === 0 && startOffset === 0) {
+          actualEndDate = addDays(currentTradingDate, 1);
+        }
+        
+        const actualStartDateStr = format(actualStartDate, "yyyy-MM-dd");
+        const actualEndDateStr = format(actualEndDate, "yyyy-MM-dd");
+
+        const localStartStr = `${actualStartDateStr} ${session.startTimeLocal}`;
+        const localEndStr = `${actualEndDateStr} ${session.endTimeLocal}`;
       
       let startDateZoned = toDate(localStartStr, { timeZone: session.timezone });
       let endDateZoned = toDate(localEndStr, { timeZone: session.timezone });
@@ -80,15 +97,6 @@ export function generateEvents(
       if (session.type.includes("프리마켓") || session.type.includes("NXT") || session.type.includes("주문취소") || session.type.includes("데이마켓")) color = "#6b7280"; // gray
       else if (session.type.includes("애프터마켓")) color = "#3b82f6"; // blue
       else if (session.type.includes("점심")) color = "#f59e0b"; // yellow
-
-      // 고정된 국가별 순서를 지정하여 항상 같은 열에 배치되도록 함
-      const countryOrderMap: Record<string, number> = {
-        "US": 1,
-        "KR": 2,
-        "JP": 3,
-        "CN": 4,
-        "UK": 5
-      };
 
       events.push({
         id: `${session.id}_${dateStr}`, // dateStr is the base Trading Date
@@ -105,6 +113,7 @@ export function generateEvents(
           order: countryOrderMap[session.country] || 99
         }
       });
+    }
     }
 
     currentTradingDate = addDays(currentTradingDate, 1);

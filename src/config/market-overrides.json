@@ -1,0 +1,71 @@
+{
+  "US": {
+    "session_overrides": {
+      "2026-11-27": {
+        "reason": "블랙프라이데이",
+        "us_reg": { "endTimeLocal": "13:00" },
+        "us_after": { "startTimeLocal": "13:00", "endTimeLocal": "17:00" }
+      },
+      "2026-12-24": {
+        "reason": "크리스마스 이브",
+        "us_reg": { "endTimeLocal": "13:00" },
+        "us_after": { "startTimeLocal": "13:00", "endTimeLocal": "17:00" }
+      },
+      "2027-11-26": {
+        "reason": "블랙프라이데이",
+        "us_reg": { "endTimeLocal": "13:00" },
+        "us_after": { "startTimeLocal": "13:00", "endTimeLocal": "17:00" }
+      }
+    },
+    "ats_day_market_holidays": [
+      "2026-01-18", "2026-02-15", "2026-04-02", "2026-05-24",
+      "2026-06-18", "2026-07-02", "2026-09-06", "2026-11-25",
+      "2026-12-24",
+      "2027-01-17", "2027-02-14", "2027-03-25", "2027-05-30",
+      "2027-06-17", "2027-07-04", "2027-09-05", "2027-11-24",
+      "2027-12-23"
+    ]
+  },
+  "KR": {
+    "session_overrides": {
+      "2026-11-19": {
+        "reason": "대학수학능력시험",
+        "kr_pre": { "startTimeLocal": "09:00", "endTimeLocal": "09:50" },
+        "kr_reg": { "startTimeLocal": "10:00", "endTimeLocal": "16:30" },
+        "kr_after": { "startTimeLocal": "16:30", "endTimeLocal": "18:00" }
+      },
+      "2027-11-18": {
+        "reason": "대학수학능력시험(예상)",
+        "kr_pre": { "startTimeLocal": "09:00", "endTimeLocal": "09:50" },
+        "kr_reg": { "startTimeLocal": "10:00", "endTimeLocal": "16:30" },
+        "kr_after": { "startTimeLocal": "16:30", "endTimeLocal": "18:00" }
+      }
+    }
+  },
+  "UK": {
+    "session_overrides": {
+      "2026-12-24": {
+        "reason": "크리스마스 이브",
+        "uk_reg": { "endTimeLocal": "12:30" }
+      },
+      "2026-12-31": {
+        "reason": "새해 전야",
+        "uk_reg": { "endTimeLocal": "12:30" }
+      },
+      "2027-12-24": {
+        "reason": "크리스마스 이브",
+        "uk_reg": { "endTimeLocal": "12:30" }
+      },
+      "2027-12-31": {
+        "reason": "새해 전야",
+        "uk_reg": { "endTimeLocal": "12:30" }
+      }
+    }
+  },
+  "JP": {
+    "session_overrides": {}
+  },
+  "CN": {
+    "session_overrides": {}
+  }
+}

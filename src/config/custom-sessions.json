@@ -1,10 +1,13 @@
 [
-  { "id": "us_pre", "country": "US", "countryName": "미국", "type": "프리마켓/NXT", "startTimeLocal": "04:00", "endTimeLocal": "09:30", "timezone": "America/New_York" },
-  { "id": "us_reg", "country": "US", "countryName": "미국", "type": "정규장", "startTimeLocal": "09:30", "endTimeLocal": "16:00", "timezone": "America/New_York" },
-  { "id": "us_after", "country": "US", "countryName": "미국", "type": "애프터마켓", "startTimeLocal": "16:00", "endTimeLocal": "20:00", "timezone": "America/New_York" },
+  { "id": "us_day", "country": "US", "countryName": "미국", "type": "데이마켓", "startTimeLocal": "20:00", "endTimeLocal": "03:50", "startDayOffset": -1, "timezone": "America/New_York" },
+  { "id": "us_pre", "country": "US", "countryName": "미국", "type": "프리마켓", "startTimeLocal": "04:00", "endTimeLocal": "09:30", "timezone": "America/New_York" },
+  { "id": "us_reg", "country": "US", "countryName": "미국", "type": "정규장", "startTimeLocal": "09:30", "endTimeLocal": "16:00", "earlyCloseTimeLocal": "13:00", "timezone": "America/New_York" },
+  { "id": "us_after", "country": "US", "countryName": "미국", "type": "애프터마켓", "startTimeLocal": "16:00", "endTimeLocal": "20:00", "earlyStartTimeLocal": "13:00", "earlyCloseTimeLocal": "17:00", "timezone": "America/New_York" },
   
-  { "id": "kr_nxt", "country": "KR", "countryName": "한국", "type": "프리마켓/NXT", "startTimeLocal": "08:00", "endTimeLocal": "08:50", "timezone": "Asia/Seoul" },
-  { "id": "kr_pre", "country": "KR", "countryName": "한국", "type": "프리마켓/NXT", "startTimeLocal": "08:50", "endTimeLocal": "09:00", "timezone": "Asia/Seoul" },
+  { 
+    "_comment": "유저 특수 규칙 반영: 동시호가(08:50~09:00) 삭제 및 NXT 프리마켓 시간만 유지",
+    "id": "kr_pre", "country": "KR", "countryName": "한국", "type": "프리마켓", "startTimeLocal": "08:00", "endTimeLocal": "08:50", "timezone": "Asia/Seoul" 
+  },
   { "id": "kr_reg", "country": "KR", "countryName": "한국", "type": "정규장", "startTimeLocal": "09:00", "endTimeLocal": "15:30", "timezone": "Asia/Seoul" },
   { "id": "kr_after", "country": "KR", "countryName": "한국", "type": "애프터마켓", "startTimeLocal": "15:30", "endTimeLocal": "18:00", "timezone": "Asia/Seoul" },
   
@@ -16,5 +19,5 @@
   { "id": "cn_lunch", "country": "CN", "countryName": "중국", "type": "점심시간", "startTimeLocal": "11:30", "endTimeLocal": "13:00", "timezone": "Asia/Shanghai" },
   { "id": "cn_reg_2", "country": "CN", "countryName": "중국", "type": "정규장", "startTimeLocal": "13:00", "endTimeLocal": "15:00", "timezone": "Asia/Shanghai" },
   
-  { "id": "uk_reg", "country": "UK", "countryName": "영국", "type": "정규장", "startTimeLocal": "08:00", "endTimeLocal": "16:30", "timezone": "Europe/London" }
+  { "id": "uk_reg", "country": "UK", "countryName": "영국", "type": "정규장", "startTimeLocal": "08:00", "endTimeLocal": "16:30", "earlyCloseTimeLocal": "12:30", "timezone": "Europe/London" }
 ]
